@@ -85,7 +85,8 @@ st.title("🎬 2026 흥행 궤적")
 st.caption("올해 박스오피스 데이터로, 영화들의 누적 관객 궤적을 비교하고 예측합니다.")
 
 raw = collect_2026()
-curves, meta, raw_feat = build_curves(raw)st.write(f"분석 대상 영화: {len(curves)}편 (상영 종료 추정 {int(meta['종영'].sum())}편)")
+curves, meta, raw_feat = build_curves(raw)
+st.write(f"분석 대상 영화: {len(curves)}편 (상영 종료 추정 {int(meta['종영'].sum())}편)")
 
 top20 = meta.sort_values("최종관객", ascending=False).head(20)
 
