@@ -42,3 +42,18 @@ fig = px.scatter(df, x="log스크린", y="log최종관객", hover_name=df.index,
                  title="개봉 초기 스크린 수 vs 최종 관객 수 (로그)",
                  labels={"log스크린":"스크린 수(log)","log최종관객":"최종 관객 수(log)"})
 st.plotly_chart(fig)
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.metrics import r2_score
+
+X = df[["스크린수","상영횟수","순위"]].copy()
+X["스크린수"] = np.log1p(X["스크린수"]); X["상영횟수"] = np.log1p(X["상영횟수"])
+y = np.log1p(df["최종관객"])
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, random_state=42)
+
+for 이름, m in {"선형회귀": LinearRegression(),
+               "랜덤포레스트": RandomForestRegressor(n_estimators=300, random_state=0),
+               "그래디언트부스팅": GradientBoostingRegressor(random_state=0)}.items():
+    m.fit(X_tr, y_tr)
+    st.write(이름, round(r2_score(y_te, m.predict(X_te)), 3))
