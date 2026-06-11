@@ -61,3 +61,15 @@ rf = RandomForestRegressor(n_estimators=300, random_state=0).fit(X, y)
 imp = pd.DataFrame({"특성": X.columns, "중요도": rf.feature_importances_}).sort_values("중요도")
 fig = px.bar(imp, x="중요도", y="특성", orientation="h", title="무엇이 흥행을 좌우했나")
 st.plotly_chart(fig)
+import streamlit as st
+
+st.title("영화 흥행 예측기 — 개봉 초기 성적으로")
+스크린 = st.slider("개봉 초기 스크린 수", 1, 2500, 800)
+상영 = st.slider("개봉 초기 상영 횟수", 1, 8000, 2000)
+순위 = st.slider("개봉 초기 순위", 1, 10, 3)
+열기 = st.slider("상영당 관객 수(좌석 열기)", 1, 80, 20)
+
+입력 = pd.DataFrame([[np.log1p(스크린), np.log1p(상영), 순위, np.log1p(열기)]],
+                   columns=X2.columns)
+예측 = np.expm1(개선모델.predict(입력)[0])      # 로그를 원래 관객 수로 되돌리기
+st.metric("예상 최종 관객 수", f"{int(예측):,} 명")
