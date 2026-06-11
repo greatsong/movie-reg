@@ -85,9 +85,9 @@ st.write(f"분석 대상 영화: {len(curves)}편")
 top20 = meta.sort_values("최종관객", ascending=False).head(20)
 
 # ── 보기 옵션 ──
-c1, c2 = st.columns(2)
-정렬 = c1.radio("정렬 기준", ["누적 관객 많은 순", "개봉 후 빠른 순"], horizontal=True)
-강조 = c2.multiselect("특정 영화 강조 (선택 안 하면 전체 동일)", top20.index.tolist())
+c1, c2 = st.columns([2, 1])
+강조 = c1.multiselect("강조할 영화 (선택 안 하면 전체 동일)", top20.index.tolist())
+로그축 = c2.toggle("세로축 로그 보기", value=False)
 
 # ── 그래프: Top 20 곡선 겹쳐 그리기 ──
 fig = go.Figure()
@@ -104,6 +104,7 @@ for 영화 in top20.index:
 fig.update_layout(
     title="2026 Top 20 영화의 개봉 후 누적 관객 궤적",
     xaxis_title="개봉 후 경과일", yaxis_title="누적 관객 수",
+    yaxis_type="log" if 로그축 else "linear",
     height=600, hovermode="x unified", legend=dict(font=dict(size=10)),
 )
 st.plotly_chart(fig, use_container_width=True)
