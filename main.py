@@ -116,14 +116,11 @@ with tab1:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ─────────────────────────────────────────────
 with tab2:
-    st.caption("Top 20 중 한 편을 골라, 같은 경과일에 '아직 상영 중이던' 비슷한 영화들의 "
-               "이후 궤적을 빌려 '앞으로 어떻게 끝날지'를 그려 봅니다.")
+    st.caption("세 가지 방식(A·B·C)으로 각각 최종 관객을 예측하고, 그게 올해 몇 위 수준인지도 함께 봅니다. "
+               "세 모델 모두 '현재 누적'에서 출발해, 현재를 무시한 엉뚱한 예측을 막았어요.")
 
     대상 = st.selectbox("예측할 영화", top20.index.tolist())
-    k = st.slider("비교할 비슷한 영화 수", 3, 8, 5)
-
     target = curves[대상]
     now_day = int(target.index[-1])
     now_acc = float(target.iloc[-1])
@@ -132,73 +129,107 @@ with tab2:
     cc1.metric("현재 경과일", f"개봉 {now_day}일째")
     cc2.metric("현재 누적 관객", f"{now_acc:,.0f} 명")
 
-    # 내 영화가 이미 내려갔으면 예측하지 않는다
     if meta.loc[대상, "종영"]:
-        st.success(
-            f"**'{대상}'은(는) 이미 상영을 마친 것으로 보여요.** "
-            f"(최근 7일간 Top10 기록이 없어요.) "
-            f"최종 누적은 **{now_acc:,.0f}명** 선에서 마감됐을 가능성이 큽니다. "
-            "아직 상영 중인 영화를 고르면 '앞으로의 궤적'을 예측해 볼 수 있어요."
-        )
-        fig_done = go.Figure()
-        fig_done.add_trace(go.Scatter(x=target.index, y=target.values,
-            mode="lines+markers", line=dict(width=4, color="crimson"), name=대상))
-        fig_done.update_layout(title=f"'{대상}' 누적 관객 (상영 종료)",
-            xaxis_title="개봉 후 경과일", yaxis_title="누적 관객 수", height=420)
-        st.plotly_chart(fig_done, use_container_width=True)
+        st.success(f"**'{대상}'은(는) 이미 상영을 마친 것으로 보여요.** "
+                   f"최종 누적은 현재와 비슷한 **{now_acc:,.0f}명**으로 확정에 가깝습니다.")
         st.stop()
 
-    # 비교군: 내 시점(now_day) 이후로도 상영이 이어진 영화만 (빌려올 궤적이 실제 존재)
-    후보 = []
-    for 영화 in top20.index:
+    # ════════ 학습용: '끝까지 간(충분히 상영된)' 과거 영화들 ════════
+    완성작 = []
+    for 영화 in curves:
+        s = curves[영화]
         if 영화 == 대상:
             continue
-        s = curves[영화]
-        if now_day not in s.index:
+        if not meta.loc[영화, "종영"]:        # 끝난 영화만 (최종값이 신뢰됨)
             continue
-        if s.index[-1] < now_day + 5:
+        if s.index[-1] < now_day:             # 적어도 now_day까지는 데이터가 있어야
             continue
-        후보.append((영화, abs(float(s.loc[now_day]) - now_acc)))
-    후보.sort(key=lambda x: x[1])
-    유사 = [영화 for 영화, _ in 후보[:k]]
+        완성작.append(영화)
 
-    if not 유사:
-        st.warning("같은 시점에 '아직 상영 중이던' 비슷한 영화를 찾지 못했어요. "
-                   "데이터가 더 쌓이면 비교가 가능해져요.")
+    if len(완성작) < 5:
+        st.warning("아직 학습에 쓸 '끝난 과거 영화'가 부족해요. 데이터가 더 쌓이면 정확해집니다.")
         st.stop()
 
-    fig2 = go.Figure()
-    예상끝 = []
-    for 영화 in 유사:
+    예측결과 = {}   # 모델명 -> 예상 최종관객
+
+    # ── 모델 A : 비율 기반 ───────────────────────────────
+    # 과거 영화들의 'now_day 시점 누적 / 최종' 비율의 중앙값
+    비율들 = []
+    for 영화 in 완성작:
         s = curves[영화]
-        fig2.add_trace(go.Scatter(x=s.index, y=s.values, mode="lines",
-            line=dict(dash="dot", width=1.3), opacity=0.6,
-            name=f"{영화} (최종 {int(s.iloc[-1]):,})"))
-        예상끝.append(int(s.iloc[-1]))
+        if now_day in s.index and s.iloc[-1] > 0:
+            비율들.append(float(s.loc[now_day]) / float(s.iloc[-1]))
+    중앙비율 = float(np.median(비율들))
+    중앙비율 = min(max(중앙비율, 0.05), 1.0)            # 안전장치
+    예측결과["A · 비율 기반"] = now_acc / 중앙비율
 
-    공통끝 = min(curves[영화].index[-1] for 영화 in 유사)
-    평균x, 평균y = [], []
-    for d in range(0, 공통끝 + 1):
-        vals = [float(curves[영화].loc[d]) for 영화 in 유사 if d in curves[영화].index]
-        if vals:
-            평균x.append(d); 평균y.append(np.mean(vals))
-    fig2.add_trace(go.Scatter(x=평균x, y=평균y, mode="lines",
-        line=dict(width=4, color="orange"), name="📈 예상 궤적 (평균)"))
+    # ── 모델 B : ML 회귀 (랜덤포레스트) ──────────────────
+    from sklearn.ensemble import RandomForestRegressor
+    Xrows, yrows = [], []
+    for 영화 in 완성작:
+        s = curves[영화]
+        주간 = raw_feat.get(영화)                      # 개봉초기 특성 (아래에서 준비)
+        if 주간 is None or now_day not in s.index:
+            continue
+        Xrows.append([
+            np.log1p(주간["스크린수"]), np.log1p(주간["상영횟수"]),
+            주간["순위"], np.log1p(float(s.loc[now_day])), now_day,
+        ])
+        yrows.append(np.log1p(float(s.iloc[-1])))
+    if len(Xrows) >= 5:
+        rf = RandomForestRegressor(n_estimators=300, random_state=0).fit(Xrows, yrows)
+        내주간 = raw_feat[대상]
+        x_me = [[np.log1p(내주간["스크린수"]), np.log1p(내주간["상영횟수"]),
+                 내주간["순위"], np.log1p(now_acc), now_day]]
+        pred_b = float(np.expm1(rf.predict(x_me)[0]))
+        예측결과["B · ML 회귀"] = max(pred_b, now_acc)   # 현재보다 작을 순 없음
 
-    fig2.add_trace(go.Scatter(x=target.index, y=target.values,
-        mode="lines+markers", line=dict(width=4, color="crimson"),
-        name=f"⭐ {대상} (현재까지)"))
-    fig2.add_vline(x=now_day, line_dash="dash", line_color="gray", annotation_text="지금")
-    fig2.update_layout(title=f"'{대상}'은 앞으로 어떻게 끝날까?",
+    # ── 모델 C : 자기 곡선 외삽 ──────────────────────────
+    # 최근 5일 일일 관객의 평균과 '하루 감소율'로 미래를 이어붙임
+    daily = target.diff().dropna()
+    if len(daily) >= 5:
+        recent = daily.iloc[-5:]
+        오늘관객 = float(recent.iloc[-1])
+        감소율 = 0.93                                   # 하루마다 7%씩 줄어든다고 가정
+        누적, 하루 = now_acc, max(오늘관객, 1)
+        for _ in range(120):                            # 최대 120일 더
+            하루 *= 감소율
+            누적 += 하루
+            if 하루 < 오늘관객 * 0.02:                   # 거의 0이면 종료
+                break
+        예측결과["C · 곡선 외삽"] = 누적
+
+    # ════════ 순위 예측: 예상 최종이 올해 몇 위? ════════
+    올해최종 = meta[meta["종영"]]["최종관객"].sort_values(ascending=False).values
+    def 예상순위(값):
+        return int((올해최종 > 값).sum()) + 1
+
+    # ── 결과 카드 ──
+    st.subheader("📊 모델별 예상 최종 관객")
+    cols = st.columns(len(예측결과))
+    색 = {"A · 비율 기반":"orange", "B · ML 회귀":"#4da6ff", "C · 곡선 외삽":"#2ecc71"}
+    for col, (이름, 값) in zip(cols, 예측결과.items()):
+        col.metric(이름, f"{int(값):,} 명", f"올해 {예상순위(값)}위 수준")
+
+    평균예측 = np.mean(list(예측결과.values()))
+    st.info(f"**세 모델 평균 ≈ {int(평균예측):,}명** · 올해 **{예상순위(평균예측)}위** 수준으로 끝날 전망")
+
+    # ── 그래프: 현재 곡선 + 세 모델의 끝점 ──
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=target.index, y=target.values, mode="lines+markers",
+        line=dict(width=4, color="crimson"), name=f"⭐ {대상} (현재까지)"))
+    for 이름, 값 in 예측결과.items():
+        # 현재점에서 예상 최종점까지 점선으로 연결 (대략 60일 뒤 도달 가정)
+        fig.add_trace(go.Scatter(
+            x=[now_day, now_day + 60], y=[now_acc, 값], mode="lines+markers",
+            line=dict(dash="dot", width=2.5, color=색.get(이름, "gray")),
+            name=f"{이름} → {int(값):,}"))
+    fig.add_vline(x=now_day, line_dash="dash", line_color="gray", annotation_text="지금")
+    fig.update_layout(title=f"'{대상}'의 예상 최종 — 세 모델 비교",
         xaxis_title="개봉 후 경과일", yaxis_title="누적 관객 수",
         height=560, hovermode="x unified")
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("예상 최종 관객 수")
-    e1, e2, e3 = st.columns(3)
-    e1.metric("낙관 (최대)", f"{max(예상끝):,} 명")
-    e2.metric("예상 (평균)", f"{int(np.mean(예상끝)):,} 명")
-    e3.metric("비관 (최소)", f"{min(예상끝):,} 명")
-
-    st.caption("아직 상영 중이면서 누적이 비슷했던 영화들의 이후 궤적을 빌려온 예측입니다. "
-               "이미 끝물인 영화는 비교에서 제외해, 다 끝난 영화가 다시 솟구치는 엉뚱한 예측을 막았어요.")
+    st.caption("A는 과거 영화들의 '개봉 N일째 = 최종의 몇 %' 비율로, B는 개봉 초기 성적을 학습한 "
+               "랜덤포레스트로, C는 이 영화 자신의 최근 추세를 이어붙여 예측합니다. "
+               "세 값이 비슷하면 신뢰할 만하고, 크게 갈리면 그만큼 불확실하다는 신호예요.")
