@@ -35,3 +35,10 @@ raw["경과일"] = (raw["날짜"] - raw["개봉일"]).dt.days
 df = 첫기록.join(최종.rename("최종관객")).dropna(subset=["스크린수"])
 st.write("영화 수:", len(df))
 st.write(df.sort_values("최종관객", ascending=False)[["스크린수","최종관객"]].head(3))
+import plotly.express as px
+df["log스크린"] = np.log10(df["스크린수"])
+df["log최종관객"] = np.log10(df["최종관객"])
+fig = px.scatter(df, x="log스크린", y="log최종관객", hover_name=df.index,
+                 title="개봉 초기 스크린 수 vs 최종 관객 수 (로그)",
+                 labels={"log스크린":"스크린 수(log)","log최종관객":"최종 관객 수(log)"})
+st.plotly_chart(fig)
