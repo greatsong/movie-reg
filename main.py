@@ -14,16 +14,22 @@ st.set_page_config(page_title="영화 흥행 예측기", layout="wide")
 BASE = "http://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
 
 
-# 1) API로 2026년 박스오피스 수집 (한 번만 — 캐시에 보관)
-@st.cache_data(show_spinner="KOBIS에서 2026년 박스오피스를 수집하는 중…")
+# 1) API로 2026년 박스오피스 수집 (진행 상황 표시)
+@st.cache_data(show_spinner=False)
 def collect_2026():
-    KEY = st.secrets["KOBIS_KEY"]      # 4장에서 배운 안전한 키 보관
+    KEY = st.secrets["KOBIS_KEY"]
 
     start = date(2026, 1, 1)
     end = date.today() - timedelta(days=1)   # 진행 중인 해라 어제까지만
+    총일수 = (end - start).days + 1
+
+    # 진행 상황을 그릴 자리
+    진행바 = st.progress(0.0)
+    상태 = st.empty()
 
     rows = []
     날짜 = start
+    처리 = 0
     while 날짜 <= end:
         try:
             r = requests.get(
@@ -40,10 +46,21 @@ def collect_2026():
                     "순위": int(m["rank"]),
                 })
         except Exception:
-            pass                       # 한 날짜 실패해도 계속 진행
+            pass
+
+        처리 += 1
+        진행바.progress(처리 / 총일수)
+        상태.write(
+            f"📥 수집 중… {날짜:%Y-%m-%d} "
+            f"({처리}/{총일수}일, {처리/총일수*100:.0f}%) · 누적 {len(rows):,}행"
+        )
+
         날짜 += timedelta(days=1)
         time.sleep(0.05)
 
+    # 다 끝나면 진행 표시 지우기
+    진행바.empty()
+    상태.empty()
     return pd.DataFrame(rows)
 
 
