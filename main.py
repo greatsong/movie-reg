@@ -16,7 +16,7 @@ def collect_boxoffice():
                          "관객수": int(m["audiCnt"]), "누적관객": int(m["audiAcc"]),
                          "스크린수": int(m["scrnCnt"]), "상영횟수": int(m["showCnt"]),
                          "순위": int(m["rank"])})
-        날짜 += timedelta(days=3)            # 3일 간격으로 (호출 줄이기)
+        날짜 += timedelta(days=1)            # 3일 간격으로 (호출 줄이기)
         time.sleep(0.1)
     return pd.DataFrame(rows)
 
