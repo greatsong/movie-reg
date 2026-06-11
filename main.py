@@ -57,3 +57,7 @@ for 이름, m in {"선형회귀": LinearRegression(),
                "그래디언트부스팅": GradientBoostingRegressor(random_state=0)}.items():
     m.fit(X_tr, y_tr)
     st.write(이름, round(r2_score(y_te, m.predict(X_te)), 3))
+rf = RandomForestRegressor(n_estimators=300, random_state=0).fit(X, y)
+imp = pd.DataFrame({"특성": X.columns, "중요도": rf.feature_importances_}).sort_values("중요도")
+fig = px.bar(imp, x="중요도", y="특성", orientation="h", title="무엇이 흥행을 좌우했나")
+st.plotly_chart(fig)
