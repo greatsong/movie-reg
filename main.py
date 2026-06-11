@@ -28,7 +28,7 @@ raw["개봉일"] = pd.to_datetime(raw["개봉일"])
 raw["날짜"]  = pd.to_datetime(raw["날짜"])
 raw["경과일"] = (raw["날짜"] - raw["개봉일"]).dt.days
 
-초기 = raw[(raw["개봉일"].dt.year == 2023) & raw["경과일"].between(0, 10)]
+초기 = raw[(raw["개봉일"].dt.year == 2026) & raw["경과일"].between(0, 10)]
 첫기록 = 초기.sort_values("날짜").groupby("영화명").first()      # 개봉 초기 성적
 최종 = raw.groupby("영화명")["누적관객"].max()                  # 최종 흥행
 
