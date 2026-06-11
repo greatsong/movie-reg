@@ -58,26 +58,26 @@ def build_curves(raw):
     raw = raw[raw["경과일"].between(0, 120)]
 
     오늘 = pd.Timestamp(date.today())
-    curves, meta = {}, []
+    curves, meta, feat = {}, [], {}
     for 영화, g in raw.groupby("영화명"):
         g = g.sort_values("경과일")
         if g["경과일"].max() < 3:
             continue
         idx = range(int(g["경과일"].min()), int(g["경과일"].max()) + 1)
-        s = g.set_index("경과일")["누적관객"].reindex(idx)
-        s = s.interpolate().ffill().bfill().cummax()   # 누적은 줄지 않도록
+        s = g.set_index("경과일")["누적관객"].reindex(idx).interpolate().ffill().bfill().cummax()
         curves[영화] = s
 
-        마지막날 = g["날짜"].max()
-        meta.append({
-            "영화명": 영화,
-            "최종관객": int(s.iloc[-1]),
-            "마지막경과일": int(s.index[-1]),
-            "마지막날": 마지막날,
-            "종영": (오늘 - 마지막날).days >= 7,   # 7일 넘게 Top10에 없으면 내림
-        })
+        초기 = g[g["경과일"] <= 7].iloc[0]              # 개봉 첫 주 한 줄
+        feat[영화] = {"스크린수": int(초기["스크린수"]),
+                     "상영횟수": int(초기["상영횟수"]),
+                     "순위": int(초기["순위"])}
 
-    return curves, pd.DataFrame(meta).set_index("영화명")
+        마지막날 = g["날짜"].max()
+        meta.append({"영화명": 영화, "최종관객": int(s.iloc[-1]),
+                     "마지막경과일": int(s.index[-1]), "마지막날": 마지막날,
+                     "종영": (오늘 - 마지막날).days >= 7})
+
+    return curves, pd.DataFrame(meta).set_index("영화명"), feat
 
 
 # ── 앱 본문 ──
@@ -85,8 +85,7 @@ st.title("🎬 2026 흥행 궤적")
 st.caption("올해 박스오피스 데이터로, 영화들의 누적 관객 궤적을 비교하고 예측합니다.")
 
 raw = collect_2026()
-curves, meta = build_curves(raw)
-st.write(f"분석 대상 영화: {len(curves)}편 (상영 종료 추정 {int(meta['종영'].sum())}편)")
+curves, meta, raw_feat = build_curves(raw)st.write(f"분석 대상 영화: {len(curves)}편 (상영 종료 추정 {int(meta['종영'].sum())}편)")
 
 top20 = meta.sort_values("최종관객", ascending=False).head(20)
 
